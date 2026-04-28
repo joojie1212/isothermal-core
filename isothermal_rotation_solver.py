@@ -47,6 +47,15 @@ class Isothermal_Rotation_Solver(Isothermal_Solver):
 
         self.m_tilde = m
 
+        I = np.zeros_like(self.x)
+        I = cumulative_trapezoid(
+        self.x**4*self.rho_tilde,
+        self.x,
+        initial=0
+        )
+
+        self.I_tilde = I
+
         # ---------- interpolators ----------
         self.rho_tilde_interp = interp1d(
             np.log(self.x),
@@ -61,5 +70,11 @@ class Isothermal_Rotation_Solver(Isothermal_Solver):
             bounds_error=False,
             fill_value=np.nan
         )
+        self.I_tilde_interp = interp1d(
+            self.x,
+            self.I_tilde,
+            bounds_error=False,
+            fill_value=np.nan
+        )
 
-        return self.rho_tilde_interp, self.m_tilde_interp
+        return self.rho_tilde_interp, self.m_tilde_interp, self.I_tilde_interp

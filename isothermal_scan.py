@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 from scipy.ndimage import minimum_filter
 class Isothermal_Scanner:
-    def __init__(self,solver,x_min=1e-6,x_max=1e5,n_points=1000):
+    def __init__(self,solver,x_min=1e-6,x_max=1e10,n_points=100000):
         """
         solver_cls: IsothermalSphere class (not instance)
         """
@@ -13,7 +13,11 @@ class Isothermal_Scanner:
         self.model.solve()
         self.model.build_dimensionless_interpolators()
 
-
+    def re_solver(self):
+        """
+        to prevent re calculation
+        """
+        return self.model
 
     def boundary_error(self, rho_c, sigma, r, rho_match, m_match):
 
@@ -75,22 +79,61 @@ class Isothermal_Scanner:
 
         return self.best, self.err_map, rho_vals, sigma_vals
     
-    def find_global_minima(self, err_map, rho_vals, sigma_vals, n_peaks=5):
+    def find_global_minima(self, err_map, rho_vals, sigma_vals, n_peaks=5, neighborhood=5):
+        """
+        使用局部极小值检测寻找多个 minima（包括浅局部最小值）
+
+        Parameters
+        ----------
+        err_map : 2D ndarray
+            误差矩阵
+        rho_vals : 1D ndarray
+            行对应 rho
+        sigma_vals : 1D ndarray
+            列对应 sigma
+        n_peaks : int
+            返回前几个最优局部极小值
+        neighborhood : int
+            邻域窗口大小（建议奇数：3,5,7）
+
+        Returns
+        -------
+        candidates : list of tuple
+            (error, rho, sigma, i, j)
+        """
+
+        import numpy as np
+        from scipy.ndimage import minimum_filter
 
         err = err_map.copy()
+        rows, cols = err.shape
+
+        # 找局部最小值：该点等于邻域最小值
+        local_min_mask = (err == minimum_filter(err, size=neighborhood, mode='nearest'))
+
+        # 提取所有局部最小点坐标
+        indices = np.argwhere(local_min_mask)
+
         candidates = []
+        for i, j in indices:
+            candidates.append(
+                (err[i, j], rho_vals[i], sigma_vals[j], i, j)
+            )
 
-        for _ in range(n_peaks):
+        # 按误差从小到大排序
+        candidates.sort(key=lambda x: x[0])
 
-            idx = np.argmin(err)
-            i, j = np.unravel_index(idx, err.shape)
+        # 取前 n_peaks
+        candidates = candidates[:n_peaks]
 
-            candidates.append((err[i,j], rho_vals[i], sigma_vals[j], i, j))
-
-        # suppress neighborhood
-            r = 3
-            err[max(0,i-r):i+r+1, max(0,j-r):j+r+1] = np.inf
+        # 检查边界极值点（只警告，不中断）
+        for k, (val, rho, sigma, i, j) in enumerate(candidates, start=1):
+            if i == 0 or i == rows - 1 or j == 0 or j == cols - 1:
+                print(
+                    f"Warning: Candidate #{k} is on boundary "
+                    f"(i={i}, j={j}, rho={rho}, sigma={sigma}, err={val:.6g}). "
+                    f"Consider expanding search range."
+                )
 
         return candidates
-    
-    
+        

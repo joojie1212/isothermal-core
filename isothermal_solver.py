@@ -86,7 +86,14 @@ class Isothermal_Solver:
         )
 
         self.m_tilde = m
+        I = np.zeros_like(self.x)
+        I = cumulative_trapezoid(
+        self.x**4*self.rho_tilde,
+        self.x,
+        initial=0
+        )
 
+        self.I_tilde = I
         # ---------- interpolators ----------
         self.rho_tilde_interp = interp1d(
             np.log(self.x),
@@ -101,8 +108,14 @@ class Isothermal_Solver:
             bounds_error=False,
             fill_value=np.nan
         )
+        self.I_tilde_interp = interp1d(
+            self.x,
+            self.I_tilde,
+            bounds_error=False,
+            fill_value=np.nan
+        )
 
-        return self.rho_tilde_interp, self.m_tilde_interp
+        return self.rho_tilde_interp, self.m_tilde_interp, self.I_tilde_interp
     def scaling(self, rho_c, sigma, G=4.302e-6):
         """
         rho_c : central density (Msun/kpc^3)
@@ -121,6 +134,7 @@ class Isothermal_Solver:
         self.r = self.x * self.r0
         self.rho = self.rho_c * self.rho_tilde
         self.m_scale=4*np.pi*self.r0**3*self.rho_c
+        self.I_scale=4*np.pi*self.r0**5*self.rho_c
         
         
 
@@ -152,6 +166,26 @@ class Isothermal_Solver:
 
         return rho_q, m_q
 
+    def rotational_inertia(self,r):
+        if not hasattr(self, "r"):
+            raise RuntimeError("Call scaling() before query()")
+
+        
+
+        r_max = self.r[-1]
+
+        if r > r_max:
+
+            self.update_grid(max(r*1.2,r_max*2))
+            print("----warning! large core radius! resolving isothermal core----")
+            self.solve()
+            self.build_dimensionless_interpolators()
+            self.scaling(self.rho_c, self.sigma, self.G)
+        
+       
+
+        I_q = self.I_tilde_interp(r/self.r0)*self.I_scale
+        return I_q
 
     def potential(self):
         """
